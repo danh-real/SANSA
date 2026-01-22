@@ -17,3 +17,4 @@ ign*
 *cmd.txt
 *.pth
 jobs
+checkpoints/
