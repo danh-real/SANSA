@@ -13,7 +13,6 @@ supp*
 saved_models
 ign*
 .vscode
-*.sh
 *cmd.txt
 *.pth
 jobs
