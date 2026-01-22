@@ -54,9 +54,14 @@ def train_one_epoch(
 
         random_shot = random.randint(1, args.shots)
 
+        # NOTE
         # build sequence: supports + query  -> T = random_shot + 1
         samples = torch.cat([support_imgs[:, :random_shot], query_img.unsqueeze(1)], dim=1)   # [B, T, C, H, W]
         masks   = torch.cat([support_masks[:, :random_shot], query_mask.unsqueeze(1)], dim=1) # [B, T, H, W]
+        
+        # build sequence: supports + query  -> T = random_shot + 1
+        # samples = torch.cat([support_imgs[:, :random_shot], query_img], dim=1)   # [B, T, C, H, W]
+        # masks   = torch.cat([support_masks[:, :random_shot], query_mask], dim=1) # [B, T, H, W]
 
         prompt_dict = build_prompt_dict(masks, args.prompt, n_shots=random_shot, train_mode=True, device=model.device)
         samples = samples.to(device)

@@ -34,20 +34,24 @@ class SANSA(nn.Module):
         Returns:
             {"pred_masks": Tensor [B*T, H', W']}
         """
-
+        # print(samples.shape)
         samples, B, T, orig_size = self._preprocess_visual_features(samples, self.sam.image_size)
-        backbone_output: BackboneOutput = self._forward_backbone(samples, orig_size)
+        backbone_output: BackboneOutput = self._forward_backbone(samples, orig_size) # NOTE
         outputs = {"masks": []}
+        # print(samples.shape, B)
 
         n_shots = prompt_dict['shots']
         for b in range(B):
             self.memory_bank = {}
             for idx in range(T):
-                absolute_idx = b * T + idx
+                # backbone_output: BackboneOutput = self._forward_backbone(samples[[idx]], orig_size)
+                absolute_idx = b*T + idx
+                # absolute_idx = 0 # NOTE
 
                 if idx < n_shots:
                     frame_prompt = prompt_dict[b][idx]['prompt']
                     prompt_type = prompt_dict[b][idx]['prompt_type']
+                    # print(frame_prompt.shape)
                     frame_prompt = rescale_prompt(frame_prompt, prompt_type, orig_size[b], self.sam.image_size)
                     if prompt_type == 'mask':
                         decoder_out: DecoderOutput = self.sam._use_mask_as_output(backbone_output, frame_prompt, absolute_idx)
@@ -55,8 +59,9 @@ class SANSA(nn.Module):
                         decoder_out: DecoderOutput = self._compute_decoder_out_no_mem(backbone_output, absolute_idx, prompt_input=frame_prompt)
                         
                 else:
-                    decoder_out: DecoderOutput = self._compute_decoder_out_w_mem(backbone_output, absolute_idx, idx, self.memory_bank)
+                    decoder_out: DecoderOutput = self._compute_decoder_out_w_mem(backbone_output, absolute_idx, idx, self.memory_bank, shots=n_shots)
 
+                
                 # update memory bank
                 mem_entry = self._compute_memory_bank_dict(decoder_out, backbone_output, absolute_idx)
                 self.memory_bank[idx] = mem_entry
@@ -123,6 +128,7 @@ class SANSA(nn.Module):
         idx: int,
         memory_idx: int,
         memory_bank: Dict[int, Dict[str, torch.Tensor]],
+        shots
     ) -> DecoderOutput:
         """
         Decode a frame with memory: used for target frames;
@@ -142,13 +148,17 @@ class SANSA(nn.Module):
         # take only the highest res feature map
         high_res_features = backbone_out.get_high_res_features(current_vision_feats)
         
+        # for k, v in memory_bank.items():
+        #     print(k, v["maskmem_features"].shape)
+        
         pix_feat_with_mem = self.sam._prepare_memory_conditioned_features(
             frame_idx=memory_idx,
             current_vision_feats=current_vision_feats[-1:],
             current_vision_pos_embeds=current_vision_pos_embeds[-1:],
             feat_sizes=backbone_out.feat_sizes[-1:],
             num_frames=memory_idx+1,
-            memory_bank=memory_bank
+            memory_bank=memory_bank,
+            shots=shots
         )
 
         decoder_out: DecoderOutput = self.sam._forward_sam_heads(
@@ -245,6 +255,11 @@ def build_sansa(sam2_version: str = 'large', adaptformer_stages: List[int] = [2,
 
     # freeze everything except adapters
     for name, p in model.named_parameters():
-        p.requires_grad = ("adapter" in name)
+        if "adapter" in name:
+            p.requires_grad_(True)
+        # elif "image_encoder" in name or "sam_prompt_encoder" in name:
+        #     p.requires_grad_(False)
+        else:
+            p.requires_grad_(False)
 
     return model

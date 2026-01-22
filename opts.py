@@ -15,11 +15,13 @@ def get_args_parser() -> argparse.ArgumentParser:
 
     # Data
     parser.add_argument("--data_root", type=str, default="data", help="Root directory for datasets.")
-    parser.add_argument("--dataset_file", type=str, default="coco", choices=["coco", "lvis", "fss", "pascal_voc", "pascal_voc_cd", "pascal_part", "paco_part", "deepglobe", "isic",
-                 "lung", "ade20k", "multi"], help="Dataset name. Use 'multi' for training the generalist model.")
+    parser.add_argument("--task", type=str, default="", help="MSD task")
+    parser.add_argument("--dataset_file", type=str, default="sarcoma", choices=["coco", "lvis", "fss", "pascal_voc", "pascal_voc_cd", "pascal_part", "paco_part", "deepglobe", "isic",
+                 "lung", "sarcoma", "ade20k", "multi", "msd", "msd_all", "msd_vol", "btcv"], help="Dataset name. Use 'multi' for training the generalist model.")
     parser.add_argument("--multi_train", nargs="+", type=str, default=["lvis", "coco", "ade20k", "paco_part"], help="Datasets to mix when dataset_file='multi'.")
     parser.add_argument("--ds_weight", nargs="+", type=float, default=[0.4, 0.45, 0.1, 0.05], help="Sampling weights for datasets in --multi_train.")
     parser.add_argument("--num_workers", type=int, default=6, help="DataLoader workers.")
+    parser.add_argument("--img_size", type=int, default=256, help="Input image size for model (images will be resized to this).")
 
     # Prompting / Shots / Folds
     parser.add_argument("--prompt", type=str, default="mask", choices=["mask", "scribble", "box", "point", "multi"], help="Prompt type for support frames; 'multi' samples a type at random.")
@@ -41,7 +43,7 @@ def get_args_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch_size", type=int, default=2, help="Global batch size (may be split per GPU).")
 
     # Logging / Runtime
-    parser.add_argument("--no_distributed", action="store_true", default=False, help="Force single-process training.")
+    parser.add_argument("--distributed", action="store_true", default=False, help="Force single-process training.")
 
     # Inference
     parser.add_argument("--threshold", type=float, default=0.5, help="Sigmoid threshold to binarize masks at eval.")

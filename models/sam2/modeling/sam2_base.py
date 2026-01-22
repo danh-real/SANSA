@@ -296,6 +296,7 @@ class SAM2Base(torch.nn.Module):
         - obj_ptr: [B, C] shape, the object pointer vector for the output mask, extracted
           based on the output token from the SAM mask decoder.
         """
+        
         B = backbone_features.size(0)
         device = backbone_features.device
         assert backbone_features.size(1) == self.sam_prompt_embed_dim
@@ -506,7 +507,8 @@ class SAM2Base(torch.nn.Module):
         current_vision_pos_embeds,
         feat_sizes,
         num_frames,
-        memory_bank
+        memory_bank,
+        shots
     ):
         """Fuse the current frame's visual feature map with previous memory."""
         B, C = current_vision_feats[-1].shape[-2:]   # batch size on this frame: always 1
@@ -523,7 +525,9 @@ class SAM2Base(torch.nn.Module):
             # Retrieve the memories encoded with the maskmem backbone
             to_cat_memory, to_cat_memory_pos_embed = [], []
             t_pos_and_prevs = []
-            t_pos_and_prevs.append((0, memory_bank[0]))
+            for i_shot in range(shots):
+                t_pos_and_prevs.append((0, memory_bank[i_shot]))
+                
             for t_pos in range(1, self.num_maskmem):
                 t_rel = self.num_maskmem - t_pos  # how many frames before current frame
                 prev_frame_idx = frame_idx - t_rel

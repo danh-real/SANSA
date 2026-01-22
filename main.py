@@ -15,22 +15,38 @@ from engine import train_one_epoch
 import opts
 from util.commons import setup_logging, make_deterministic
 
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import numpy as np
 
-def main(args):
-    utils.init_distributed_mode(args)
-    rank = utils.get_rank()
+def setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '29500  '
+    dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
+
+def cleanup():
+    dist.destroy_process_group()
+
+def main(rank=0, args=None, world_size=1):    
+    if args.distributed:
+        setup(rank, world_size)
+        torch.cuda.set_device(rank)
+        device = torch.device('cuda', rank)
+    else:
+        device = torch.device(args.device)
+        
+    # utils.init_distributed_mode(args)
     setup_logging(save_dir=args.output_dir, console="info", rank=rank)
     make_deterministic(args.seed+rank) # fix the seed for reproducibility
 
     print(args)
 
-    device = torch.device(args.device)
     model = build_sansa(args.sam2_version, args.adaptformer_stages, args.channel_factor, args.device)
     model.to(device)
 
     model_without_ddp = model
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[rank], find_unused_parameters=True)
         model_without_ddp = model.module
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
@@ -51,15 +67,15 @@ def main(args):
     cfg.shots = args.J
     dataset_train = build_dataset(args.dataset_file, image_set='train', args=cfg)
 
-    args.batch_size = int(args.batch_size / args.ngpu)
+    args.batch_size = int(args.batch_size / world_size)
     if args.distributed:
-        sampler_train = samplers.DistributedSampler(dataset_train)
+        sampler_train = torch.utils.data.DistributedSampler(dataset_train,  num_replicas=world_size, rank=rank)
     else:
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
 
     batch_sampler_train = torch.utils.data.BatchSampler(sampler_train, args.batch_size, drop_last=True)
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train, num_workers=args.num_workers)
-
+    
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs * len(data_loader_train)
     )
@@ -101,9 +117,20 @@ def main(args):
 
 
 if __name__ == '__main__':
+    seed = 0
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) 
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
     parser = argparse.ArgumentParser('SANSA training', parents=[opts.get_args_parser()])
     args = parser.parse_args()
     args.output_dir = os.path.join(args.output_dir, args.name_exp)
-
-    main(args)
-
+    
+    if args.distributed:
+        world_size = torch.cuda.device_count()
+        mp.spawn(main, args=(args, world_size,), nprocs=world_size, join=True)
+    else:
+        main(args=args)
