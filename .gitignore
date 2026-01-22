@@ -4,7 +4,6 @@ examples_*
 .spyproject
 __pycache__
 .ipynb_checkpoints
-data
 output
 pretrain
 wandb
